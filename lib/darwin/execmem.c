@@ -109,7 +109,11 @@ static bool apply_one_pcp_with_state(native_thread_state *state,
 #elif defined(__i386__)
     pcp = (uintptr_t *) &state->__eip;
 #elif defined(__arm__) || defined(__arm64__)
-    pcp = (uintptr_t *) &state->__pc;
+#if __arm64e__
+	    pcp = (uintptr_t *) &state->__opaque_pc;
+#else
+	    pcp = (uintptr_t *) &state->__pc;
+#endif
 #endif
     uintptr_t old = *pcp;
 #ifdef __arm__
