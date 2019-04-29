@@ -174,8 +174,10 @@ int substitute_hook_objc_message(Class class, SEL selector, void *replacement,
                                  void *old_ptr, bool *created_imp_ptr) {
     int ret;
     Method meth = class_getInstanceMethod(class, selector);
-    if (meth == NULL)
+    if (meth == NULL) {
+        LOG("Attempted to hook non-existant selector \"%s\" in class \"%s\"", sel_getName(selector), class_getName(class));
         return SUBSTITUTE_ERR_NO_SUCH_SELECTOR;
+    }
     const char *types = method_getTypeEncoding(meth);
 
     if (created_imp_ptr)
