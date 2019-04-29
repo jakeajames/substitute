@@ -132,7 +132,9 @@ out:
 static void free_trampoline(void *tramp) {
     pthread_mutex_lock(&tramp_mutex);
     
+#if __arm64e__
     tramp = xpacd(tramp);
+#endif
     
     void *page = (void *) (((uintptr_t) tramp) & ~(_PAGE_SIZE - 1));
     size_t i = (tramp - page) / TRAMPOLINE_SIZE;
