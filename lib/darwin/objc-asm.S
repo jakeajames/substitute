@@ -45,6 +45,28 @@ _remap_start:
     mov r9, r0
     pop {r0-r4, lr}
     bx r9
+
+#elif defined(__arm64e__)
+    stp x30, x8, [sp, #-0x10]!
+    stp x7, x6, [sp, #-0x10]!
+    stp x5, x4, [sp, #-0x10]!
+    stp x3, x2, [sp, #-0x10]!
+    stp x1, x0, [sp, #-0x10]!
+
+    ldr x0, my_rpe+8
+    ldr x1, my_rpe+0x10
+    ldr x2, my_rpe
+    blraaz x2
+    mov x9, x0
+
+    ldp x1, x0, [sp], #0x10
+    ldp x3, x2, [sp], #0x10
+    ldp x5, x4, [sp], #0x10
+    ldp x7, x6, [sp], #0x10
+    ldp x30, x8, [sp], #0x10
+
+    braaz x9
+
 #elif defined(__arm64__)
     stp x30, x8, [sp, #-0x10]!
     stp x7, x6, [sp, #-0x10]!

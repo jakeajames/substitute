@@ -36,6 +36,11 @@ struct tramp_info_page_entry {
     void *arg2;
 };
 
+#if __arm64e__
+extern uint64_t xpacd(uint64_t pointer);
+extern uint64_t paciza(uint64_t pointer);
+#endif
+
 _Static_assert(TRAMP_INFO_PAGE_ENTRY_SIZE == sizeof(struct tramp_info_page_entry),
                "TRAMP_INFO_PAGE_ENTRY_SIZE");
 _Static_assert(sizeof(struct tramp_info_page_header) +
@@ -107,10 +112,16 @@ static int get_trampoline(void *func, void *arg1, void *arg2, void *tramp_ptr) {
     entry->arg1 = arg1;
     entry->arg2 = arg2;
     void *tramp = (page - PAGE_SIZE) + (entry - entries) * TRAMPOLINE_SIZE;
+    
 #ifdef __arm__
     tramp += 1;
 #endif
     *(void **) tramp_ptr = tramp;
+    
+#if __arm64e__
+    *(void **) tramp_ptr = (void*)paciza(xpacd((uint64_t)tramp));
+#endif
+    
     ret = SUBSTITUTE_OK;
 out:
     pthread_mutex_unlock(&tramp_mutex);
@@ -120,6 +131,9 @@ out:
 
 static void free_trampoline(void *tramp) {
     pthread_mutex_lock(&tramp_mutex);
+    
+    tramp = xpacd(tramp);
+    
     void *page = (void *) (((uintptr_t) tramp) & ~(_PAGE_SIZE - 1));
     size_t i = (tramp - page) / TRAMPOLINE_SIZE;
     struct tramp_info_page_entry *entries = page + _PAGE_SIZE;
@@ -160,10 +174,8 @@ int substitute_hook_objc_message(Class class, SEL selector, void *replacement,
                                  void *old_ptr, bool *created_imp_ptr) {
     int ret;
     Method meth = class_getInstanceMethod(class, selector);
-    if (meth == NULL) {
-        LOG("Attempted to hook non-existant selector \"%s\" in class \"%s\"", sel_getName(selector), class_getName(class));
+    if (meth == NULL)
         return SUBSTITUTE_ERR_NO_SUCH_SELECTOR;
-    }
     const char *types = method_getTypeEncoding(meth);
 
     if (created_imp_ptr)
@@ -174,13 +186,28 @@ int substitute_hook_objc_message(Class class, SEL selector, void *replacement,
     if (old_ptr) {
         if ((ret = get_trampoline(dereference, old_ptr, NULL, &temp)))
             return ret;
+
+#if __arm64e__
+        *(IMP *) old_ptr = (IMP)paciza(xpacd((uint64_t)temp));
+#else
         *(IMP *) old_ptr = temp;
+#endif
     }
 
+#if __arm64e__
+    replacement = (void*)paciza(xpacd((uint64_t)replacement));
+#endif
+    
     IMP old = class_replaceMethod(class, selector, replacement, types);
     if (old) {
-        if (old_ptr)
+        if (old_ptr) {
+            
+#if __arm64e__
+            *(IMP *) old_ptr = (IMP)paciza(xpacd((uint64_t)old));
+#else
             *(IMP *) old_ptr = old;
+#endif
+        }
     } else {
         if (old_ptr) {
             Class super = class_getSuperclass(class);
@@ -192,8 +219,9 @@ int substitute_hook_objc_message(Class class, SEL selector, void *replacement,
                 substitute_panic("%s: no superclass but the method didn't exist\n",
                                  __func__);
             }
-            ret = get_trampoline(class_getMethodImplementation, super,
-                                 selector, old_ptr);
+            
+            ret = get_trampoline(class_getMethodImplementation, super, selector, old_ptr);
+            
             if (created_imp_ptr)
                 *created_imp_ptr = true;
         }
@@ -201,6 +229,7 @@ int substitute_hook_objc_message(Class class, SEL selector, void *replacement,
 
     if (temp)
         free_trampoline(temp);
+    
     return SUBSTITUTE_OK;
 }
 
